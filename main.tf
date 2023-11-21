@@ -256,7 +256,7 @@ resource "aws_instance" "ec2_1" {
               sudo ansible-playbook wordpress.yml
               EOF
   monitoring             = true
-  subnet_id              = var.subnet_id_aws_instance
+  subnet_id              = aws_subnet.publica1.id
   associate_public_ip_address = true
   
 
@@ -279,4 +279,38 @@ resource "aws_db_instance" "banco" {
   password             = var.dbpass
   parameter_group_name = "default.mysql5.7"
   skip_final_snapshot  = true
+}
+
+
+
+######################################## BUCKET ########################################
+
+# Create a bucket
+resource "aws_s3_bucket" "bucket" {
+
+  bucket = "desafiofinalgustavo"
+
+  tags = {
+
+    Name        = "Ansible bucket"
+
+    Environment = "Prod"
+
+  }
+
+}
+
+# Upload an object
+resource "aws_s3_bucket_object" "this" {
+
+  bucket = aws_s3_bucket.bucket.id
+
+  key    = "ansible.zip"
+
+  acl    = "public-read"  # or can be "private"
+
+  source = "ansible.zip"
+
+  etag = filemd5("ansible.zip")
+
 }

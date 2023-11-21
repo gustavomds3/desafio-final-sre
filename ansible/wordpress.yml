@@ -1,0 +1,13 @@
+---
+  - name: instalacao Wordpress
+    hosts: wordpress
+    become: yes
+    #
+    roles:
+    #  - mysql-server
+      - wordpress  
+
+  - name: configuracao MySQL
+    hosts: rds
+    become: yes
+    roles: mysql-server
