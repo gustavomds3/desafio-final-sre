@@ -1,26 +1,28 @@
 //Criar configuração do Provedor
 provider "aws" {
-  region = "us-east-1"
+  region  = "us-east-1"
+  profile = "desafio-final"
 }
 
 terraform {
   backend "s3" {
-    bucket = "tf-demo-iac-00"
-    key    = "infra/network/terraform.tfstate"
-    region = "us-east-1"
+    profile              = "desafio-final"
+    bucket               = "gustavo-formacao-sre"
+    key                  = "infra/network/terraform.tfstate"
+    region               = "us-east-1"
     workspace_key_prefix = "env:"
   }
 }
 
 //Criar VPC
 resource "aws_vpc" "main" {
-  cidr_block       = var.vpc_cidr
-  instance_tenancy = "default"
+  cidr_block           = var.vpc_cidr
+  instance_tenancy     = "default"
   enable_dns_hostnames = true
 
   tags = {
     Name = var.vpc_name,
-    Terraformed = "true"
+    IaC  = "Terraform"
   }
 }
 
@@ -76,7 +78,7 @@ resource "aws_internet_gateway" "internet-gw" {
 
   tags = {
     Name = "iac-internet-gw",
-    terraformed = "true"
+    IaC  = "Terraform"
   }
   depends_on = [
     aws_vpc.main
@@ -85,9 +87,9 @@ resource "aws_internet_gateway" "internet-gw" {
 
 //Cria os IPs dos Nat Gateways
 resource "aws_eip" "ip-nat-gateway-1" {
-  vpc      = true
+  domain = "vpc"
   tags = {
-    terraformed = "true"
+    IaC = "Terraform"
   }
   depends_on = [
     aws_vpc.main,
@@ -96,9 +98,9 @@ resource "aws_eip" "ip-nat-gateway-1" {
 }
 
 resource "aws_eip" "ip-nat-gateway-2" {
-  vpc      = true
+  domain = "vpc"
   tags = {
-    terraformed = "true"
+    IaC = "Terraform"
   }
   depends_on = [
     aws_vpc.main,
@@ -113,7 +115,7 @@ resource "aws_nat_gateway" "nat-gateway-1" {
 
   tags = {
     Name = "iac-nat-gw-1",
-    terraformed = "true"
+    IaC  = "Terraform"
   }
   depends_on = [
     aws_vpc.main,
@@ -128,7 +130,7 @@ resource "aws_nat_gateway" "nat-gateway-2" {
 
   tags = {
     Name = "iac-nat-gw-1",
-    terraformed = "true"
+    IaC  = "Terraform"
   }
   depends_on = [
     aws_vpc.main,
@@ -147,7 +149,7 @@ resource "aws_route_table" "publica" {
   }
   tags = {
     Name = "iac-rtb-publica",
-    terraformed = "true"
+    IaC  = "Terraform"
   }
   depends_on = [
     aws_vpc.main,
@@ -159,12 +161,12 @@ resource "aws_route_table" "privada1" {
   vpc_id = aws_vpc.main.id
 
   route {
-    cidr_block = "0.0.0.0/0"
+    cidr_block     = "0.0.0.0/0"
     nat_gateway_id = aws_nat_gateway.nat-gateway-1.id
   }
   tags = {
     Name = "iac-rtb-privada1",
-    terraformed = "true"
+    IaC  = "Terraform"
   }
   depends_on = [
     aws_vpc.main,
@@ -175,12 +177,12 @@ resource "aws_route_table" "privada2" {
   vpc_id = aws_vpc.main.id
 
   route {
-    cidr_block = "0.0.0.0/0"
+    cidr_block     = "0.0.0.0/0"
     nat_gateway_id = aws_nat_gateway.nat-gateway-2.id
   }
   tags = {
     Name = "iac-rtb-privada2",
-    terraformed = "true"
+    IaC  = "Terraform"
   }
   depends_on = [
     aws_vpc.main,
@@ -203,4 +205,78 @@ resource "aws_route_table_association" "privada1" {
 resource "aws_route_table_association" "privada2" {
   subnet_id      = aws_subnet.privada2.id
   route_table_id = aws_route_table.privada2.id
+}
+
+######################################## EC2 ########################################
+
+resource "aws_security_group" "allow_ssh" {
+  name        = var.name_security_group
+  description = "Allow ssh inbound traffic"
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    description      = "SSH"
+    from_port        = 22
+    to_port          = 22
+    protocol         = "tcp"
+    cidr_blocks      = ["0.0.0.0/0"]
+  }
+    ingress {
+    description      = "HTTP"
+    from_port        = 80
+    to_port          = 80
+    protocol         = "tcp"
+    cidr_blocks      = ["0.0.0.0/0"]
+  }
+
+  egress {
+    from_port        = 0
+    to_port          = 0
+    protocol         = "-1"
+    cidr_blocks      = ["0.0.0.0/0"]
+    ipv6_cidr_blocks = ["::/0"]
+  }
+
+  tags = {
+    Name = "allow_SSH"
+  }
+}
+
+resource "aws_instance" "ec2_1" {
+  ami                    = var.ami_aws_instance
+  instance_type          = var.type_aws_instance
+  vpc_security_group_ids = [aws_security_group.allow_ssh.id]
+  key_name               = var.key_aws_instance
+  user_data = <<-EOF
+              #!/bin/bash 
+              sudo apt update && sudo apt install curl ansible unzip -y 
+              cd /tmp
+              wget https://esseeutenhocertezaqueninguemcriou.s3.amazonaws.com/ansible.zip
+              unzip ansible.zip
+              sudo ansible-playbook wordpress.yml
+              EOF
+  monitoring             = true
+  subnet_id              = var.subnet_id_aws_instance
+  associate_public_ip_address = true
+  
+
+  tags = {
+    Name = "Minha_primeira_maquina"
+  }
+}
+
+
+######################################## RDS ########################################
+
+
+resource "aws_db_instance" "banco" {
+  allocated_storage    = 10
+  db_name              = "mydb"
+  engine               = "mysql"
+  engine_version       = "5.7"
+  instance_class       = "db.t3.micro"
+  username             = var.dbuser
+  password             = var.dbpass
+  parameter_group_name = "default.mysql5.7"
+  skip_final_snapshot  = true
 }
